@@ -10,8 +10,13 @@ import sys
 
 layers = tf.contrib.layers 
 
+# SEPCTURAL_SAMPLES = 10
+# SEPCTURAL_SAMPLES = 25
 SEPCTURAL_SAMPLES = 10
+
+# FEATURE_DIM = SEPCTURAL_SAMPLES*6*2
 FEATURE_DIM = SEPCTURAL_SAMPLES*6*2
+
 CONV_LEN = 3
 CONV_LEN_INTE = 3#4
 CONV_LEN_LAST = 3#5
@@ -21,8 +26,11 @@ CONV_MERGE_LEN2 = 6
 CONV_MERGE_LEN3 = 4
 CONV_NUM2 = 64
 INTER_DIM = 120
-OUT_DIM = 6#len(idDict)
-WIDE = 20
+# OUT_DIM = 6#len(idDict)
+OUT_DIM = 10
+# WIDE = 20
+# WIDE = 10
+WIDE = 25
 CONV_KEEP_PROB = 0.8
 
 BATCH_SIZE = 64
@@ -39,19 +47,26 @@ EVAL_ITER_NUM = int(math.ceil(EVAL_DATA_SIZE / BATCH_SIZE))
 def read_audio_csv(filename_queue):
 	reader = tf.TextLineReader()
 	key, value = reader.read(filename_queue)
+	print("key: {}, value: {}".format(key, value))
 	defaultVal = [[0.] for idx in range(WIDE*FEATURE_DIM + OUT_DIM)]
 
 	fileData = tf.decode_csv(value, record_defaults=defaultVal)
+
 	features = fileData[:WIDE*FEATURE_DIM]
 	features = tf.reshape(features, [WIDE, FEATURE_DIM])
+	print("features.shape: {}".format(features.get_shape().as_list()))
+
 	labels = fileData[WIDE*FEATURE_DIM:]
+	print("labels.shape: {}".format(np.array(labels).shape))
 	return features, labels
 
 def input_pipeline(filenames, batch_size, shuffle_sample=True, num_epochs=None):
 	filename_queue = tf.train.string_input_producer(filenames, shuffle=shuffle_sample)
 	# filename_queue = tf.train.string_input_producer(filenames, num_epochs=TOTAL_ITER_NUM*EVAL_ITER_NUM*10000000, shuffle=shuffle_sample)
 	example, label = read_audio_csv(filename_queue)
-	min_after_dequeue = 1000#int(0.4*len(csvFileList)) #1000
+	print("example.shape: {}".format(example.get_shape().as_list()))
+	print("label.shape: {}".format(example.get_shape().as_list()))
+	min_after_dequeue = 1000 #int(0.4*len(csvFileList)) #1000
 	capacity = min_after_dequeue + 3 * batch_size
 	if shuffle_sample:
 		example_batch, label_batch = tf.train.shuffle_batch(
@@ -191,23 +206,23 @@ def deepSense(inputs, train, reuse=False, name='deepSense'):
 		return logits
 
 csvFileList = []
-csvDataFolder1 = os.path.join('sepHARData_'+select, "train")
+csvDataFolder1 = "./MyData"
 orgCsvFileList = os.listdir(csvDataFolder1)
 for csvFile in orgCsvFileList:
 	if csvFile.endswith('.csv'):
 		csvFileList.append(os.path.join(csvDataFolder1, csvFile))
 
-csvEvalFileList = []
-csvDataFolder2 = os.path.join('sepHARData_'+select, "eval")
-orgCsvFileList = os.listdir(csvDataFolder2)
-for csvFile in orgCsvFileList:
-	if csvFile.endswith('.csv'):
-		csvEvalFileList.append(os.path.join(csvDataFolder2, csvFile))
+# csvEvalFileList = []
+# csvDataFolder2 = os.path.join('sepHARData_'+select, "eval")
+# orgCsvFileList = os.listdir(csvDataFolder2)
+# for csvFile in orgCsvFileList:
+# 	if csvFile.endswith('.csv'):
+# 		csvEvalFileList.append(os.path.join(csvDataFolder2, csvFile))
 
 global_step = tf.Variable(0, trainable=False)
 
 batch_feature, batch_label = input_pipeline(csvFileList, BATCH_SIZE)
-batch_eval_feature, batch_eval_label = input_pipeline(csvEvalFileList, BATCH_SIZE, shuffle_sample=False)
+# batch_eval_feature, batch_eval_label = input_pipeline(csvEvalFileList, BATCH_SIZE, shuffle_sample=False)
 
 # train_status = tf.placeholder(tf.bool)
 # trainX = tf.cond(train_status, lambda: tf.identity(batch_feature), lambda: tf.identity(batch_eval_feature))
@@ -222,9 +237,9 @@ predict = tf.argmax(logits, axis=1)
 batchLoss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=batch_label)
 loss = tf.reduce_mean(batchLoss)
 
-logits_eval = deepSense(batch_eval_feature, False, reuse=True, name='deepSense')
-predict_eval = tf.argmax(logits_eval, axis=1)
-loss_eval = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits_eval, labels=batch_eval_label))
+# logits_eval = deepSense(batch_eval_feature, False, reuse=True, name='deepSense')
+# predict_eval = tf.argmax(logits_eval, axis=1)
+# loss_eval = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits_eval, labels=batch_eval_label))
 
 t_vars = tf.trainable_variables()
 
@@ -249,7 +264,7 @@ with tf.Session() as sess:
 	coord = tf.train.Coordinator()
 	threads = tf.train.start_queue_runners(coord=coord)
 
-	for iteration in xrange(TOTAL_ITER_NUM):
+	for iteration in range(TOTAL_ITER_NUM):
 
 		# _, lossV, _trainY, _predict = sess.run([discOptimizer, loss, trainY, predict], feed_dict = {
 		# 	train_status: True
@@ -257,22 +272,22 @@ with tf.Session() as sess:
 		_, lossV, _trainY, _predict = sess.run([discOptimizer, loss, batch_label, predict])
 		_label = np.argmax(_trainY, axis=1)
 		_accuracy = np.mean(_label == _predict)
-		plot.plot('train cross entropy', lossV)
-		plot.plot('train accuracy', _accuracy)
+		# plot.plot('train cross entropy', lossV)
+		# plot.plot('train accuracy', _accuracy)
+		print("iteration: {}, accuracy = {}, loss = {}".format(iteration, _accuracy, lossV))
 
-
-		if iteration % 50 == 49:
-			dev_accuracy = []
-			dev_cross_entropy = []
-			for eval_idx in xrange(EVAL_ITER_NUM):
-				# eval_loss_v, _trainY, _predict = sess.run([loss, trainY, predict], feed_dict ={train_status: False})
-				eval_loss_v, _trainY, _predict = sess.run([loss, batch_eval_label, predict_eval])
-				_label = np.argmax(_trainY, axis=1)
-				_accuracy = np.mean(_label == _predict)
-				dev_accuracy.append(_accuracy)
-				dev_cross_entropy.append(eval_loss_v)
-			plot.plot('dev accuracy', np.mean(dev_accuracy))
-			plot.plot('dev cross entropy', np.mean(dev_cross_entropy))
+		# if iteration % 50 == 49:
+		# 	dev_accuracy = []
+		# 	dev_cross_entropy = []
+		# 	for eval_idx in xrange(EVAL_ITER_NUM):
+		# 		# eval_loss_v, _trainY, _predict = sess.run([loss, trainY, predict], feed_dict ={train_status: False})
+		# 		eval_loss_v, _trainY, _predict = sess.run([loss, batch_eval_label, predict_eval])
+		# 		_label = np.argmax(_trainY, axis=1)
+		# 		_accuracy = np.mean(_label == _predict)
+		# 		dev_accuracy.append(_accuracy)
+		# 		dev_cross_entropy.append(eval_loss_v)
+		# 	plot.plot('dev accuracy', np.mean(dev_accuracy))
+		# 	plot.plot('dev cross entropy', np.mean(dev_cross_entropy))
 
 
 		if (iteration < 5) or (iteration % 50 == 49):
