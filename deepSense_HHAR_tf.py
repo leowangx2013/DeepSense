@@ -47,9 +47,10 @@ EVAL_ITER_NUM = int(math.ceil(EVAL_DATA_SIZE / BATCH_SIZE))
 def read_audio_csv(filename_queue):
 	reader = tf.TextLineReader()
 	key, value = reader.read(filename_queue)
-	print("key: {}, value: {}".format(key, value))
-	defaultVal = [[0.] for idx in range(WIDE*FEATURE_DIM + OUT_DIM)]
+	with tf.Session():
+		print("key: {}, value: {}".format(key.eval(), value.eval()))
 
+	defaultVal = [[0.] for idx in range(WIDE*FEATURE_DIM + OUT_DIM)]
 	fileData = tf.decode_csv(value, record_defaults=defaultVal)
 
 	features = fileData[:WIDE*FEATURE_DIM]

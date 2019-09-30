@@ -6,6 +6,8 @@ import csv
 
 ACCELEROMETER_FILE_PATH = "A:\Research\Accelerometer\Accelerometer+Gyroscope\lg_accelerometer_clips"
 GYROSCOPE_FILE_PATH = "A:\Research\Accelerometer\Accelerometer+Gyroscope\lg_gyroscope_clips"
+# GYROSCOPE_FILE_PATH = "A:\Research\Accelerometer\Accelerometer+Gyroscope\lg_accelerometer_clips"
+
 OUTPUT_PATH = "A:\Research\Accelerometer\AccelerometerSpeechRecognition\DeepSense\MyData"
 
 # SPECTURM_SAMPLE_NUM = 25
