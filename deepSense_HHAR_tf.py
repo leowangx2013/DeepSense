@@ -105,12 +105,17 @@ def deepSense(inputs, train, reuse=False, name='deepSense'):
 		avgNum = tf.reduce_sum(mask, reduction_indices=1) #(BATCH_SIZE, INTER_DIM)
 
 		# inputs shape (BATCH_SIZE, WIDE, FEATURE_DIM)
-		sensor_inputs = tf.expand_dims(inputs, axis=3)
+		# sensor_inputs = tf.expand_dims(inputs, axis=3)
 		# sensor_inputs shape (BATCH_SIZE, WIDE, FEATURE_DIM, CHANNEL=1)
-		acc_inputs, gyro_inputs = tf.split(sensor_inputs, num_or_size_splits=2, axis=2)
+		sensor_inputs = tf.reshape(inputs, [-1, WIDE, SEPCTURAL_SAMPLES, 2, 6])
+		acc_inputs, gyro_inputs = tf.split(sensor_inputs, num_or_size_splits=2, axis=3)
+		acc_inputs = tf.squeeze(acc_inputs, axis=3)
+		gyro_inputs = tf.squeeze(gyro_inputs, axis=3)
+		print("acc_inputs.shape: {}".format(acc_inputs.get_shape().as_list()))
+		print("gyro_inputs.shape: {}".format(gyro_inputs.get_shape().as_list()))
 
-		acc_conv1 = layers.convolution2d(acc_inputs, CONV_NUM, kernel_size=[1, 2*3*CONV_LEN],
-						stride=[1, 2*3], padding='VALID', activation_fn=None, data_format='NHWC', scope='acc_conv1')
+		acc_conv1 = layers.convolution2d(acc_inputs, CONV_NUM, kernel_size=[1, CONV_LEN],
+						stride=[1, 1], padding='VALID', activation_fn=None, data_format='NHWC', scope='acc_conv1')
 		acc_conv1 = batch_norm_layer(acc_conv1, train, scope='acc_BN1')
 		acc_conv1 = tf.nn.relu(acc_conv1)
 		acc_conv1_shape = acc_conv1.get_shape().as_list()
@@ -133,8 +138,8 @@ def deepSense(inputs, train, reuse=False, name='deepSense'):
 		acc_conv_out = tf.reshape(acc_conv3, [acc_conv3_shape[0], acc_conv3_shape[1], 1, acc_conv3_shape[2],acc_conv3_shape[3]])
 
 
-		gyro_conv1 = layers.convolution2d(gyro_inputs, CONV_NUM, kernel_size=[1, 2*3*CONV_LEN],
-						stride=[1, 2*3], padding='VALID', activation_fn=None, data_format='NHWC', scope='gyro_conv1')
+		gyro_conv1 = layers.convolution2d(gyro_inputs, CONV_NUM, kernel_size=[1, CONV_LEN],
+						stride=[1, 1], padding='VALID', activation_fn=None, data_format='NHWC', scope='gyro_conv1')
 		gyro_conv1 = batch_norm_layer(gyro_conv1, train, scope='gyro_BN1')
 		gyro_conv1 = tf.nn.relu(gyro_conv1)
 		gyro_conv1_shape = gyro_conv1.get_shape().as_list()
@@ -230,9 +235,7 @@ batch_feature, batch_label = input_pipeline(csvFileList, BATCH_SIZE)
 
 # logits = deepSense(trainX, train_status, name='deepSense')
 logits = deepSense(batch_feature, True, name='deepSense')
-
 predict = tf.argmax(logits, axis=1)
-
 # batchLoss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=trainY)
 batchLoss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=batch_label)
 loss = tf.reduce_mean(batchLoss)
@@ -255,8 +258,8 @@ loss += 5e-4 * regularizers
 
 discOptimizer = tf.train.AdamOptimizer(
 		learning_rate=1e-4, 
-		beta1=0.5,
-		beta2=0.9
+	 	beta1=0.9,
+    	beta2=0.999,
 	).minimize(loss, var_list=t_vars)
 
 with tf.Session() as sess:
@@ -275,7 +278,8 @@ with tf.Session() as sess:
 		# plot.plot('train cross entropy', lossV)
 		# plot.plot('train accuracy', _accuracy)
 		print("iteration: {}, accuracy = {}, loss = {}".format(iteration, _accuracy, lossV))
-
+		print("prediction = {}".format(_predict))
+		print("ground truth = {}".format(_label))
 		# if iteration % 50 == 49:
 		# 	dev_accuracy = []
 		# 	dev_cross_entropy = []
