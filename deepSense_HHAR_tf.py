@@ -47,8 +47,6 @@ EVAL_ITER_NUM = int(math.ceil(EVAL_DATA_SIZE / BATCH_SIZE))
 def read_audio_csv(filename_queue):
 	reader = tf.TextLineReader()
 	key, value = reader.read(filename_queue)
-	with tf.Session():
-		print("key: {}, value: {}".format(key.eval(), value.eval()))
 
 	defaultVal = [[0.] for idx in range(WIDE*FEATURE_DIM + OUT_DIM)]
 	fileData = tf.decode_csv(value, record_defaults=defaultVal)
@@ -191,15 +189,21 @@ def deepSense(inputs, train, reuse=False, name='deepSense'):
 		sensor_conv3_shape = sensor_conv3.get_shape().as_list()
 		sensor_conv_out = tf.reshape(sensor_conv3, [sensor_conv3_shape[0], sensor_conv3_shape[1], sensor_conv3_shape[2]*sensor_conv3_shape[3]*sensor_conv3_shape[4]])
 
-		gru_cell1 = tf.contrib.rnn.GRUCell(INTER_DIM)
+		# gru_cell1 = tf.contrib.rnn.GRUCell(INTER_DIM)
+		lstm_cell1 = tf.contrib.rnn.BasicLSTMCell(INTER_DIM)
 		if train:
-			gru_cell1 = tf.contrib.rnn.DropoutWrapper(gru_cell1, output_keep_prob=0.5)
+			# gru_cell1 = tf.contrib.rnn.DropoutWrapper(gru_cell1, output_keep_prob=0.5)
+			lstm_cell1 = tf.contrib.rnn.DropoutWrapper(lstm_cell1, output_keep_prob=0.5)
 
-		gru_cell2 = tf.contrib.rnn.GRUCell(INTER_DIM)
+		# gru_cell2 = tf.contrib.rnn.GRUCell(INTER_DIM)
+		lstm_cell2 = tf.contrib.rnn.BasicLSTMCell(INTER_DIM)
+
 		if train:
-			gru_cell2 = tf.contrib.rnn.DropoutWrapper(gru_cell2, output_keep_prob=0.5)
+			lstm_cell2 = tf.contrib.rnn.DropoutWrapper(lstm_cell2, output_keep_prob=0.5)
 
-		cell = tf.contrib.rnn.MultiRNNCell([gru_cell1, gru_cell2])
+		# cell = tf.contrib.rnn.MultiRNNCell([gru_cell1, gru_cell2])
+		cell = tf.contrib.rnn.MultiRNNCell([lstm_cell1, lstm_cell2])
+
 		init_state = cell.zero_state(BATCH_SIZE, tf.float32)
 
 		cell_output, final_stateTuple = tf.nn.dynamic_rnn(cell, sensor_conv_out, sequence_length=length, initial_state=init_state, time_major=False)
@@ -210,6 +214,23 @@ def deepSense(inputs, train, reuse=False, name='deepSense'):
 		logits = layers.fully_connected(avg_cell_out, OUT_DIM, activation_fn=None, scope='output')
 
 		return logits
+
+def count_trainable_parameters():
+	total_parameters = 0
+	for variable in tf.trainable_variables():
+	    # shape is an array of tf.Dimension
+	    shape = variable.get_shape()
+	    # print(shape)
+	    # print(len(shape))
+	    variable_parameters = 1
+	    for dim in shape:
+	        # print(dim)
+	        variable_parameters *= dim.value
+	    # print(variable_parameters)
+	    total_parameters += variable_parameters
+	print("=============================================")
+	print("total_parameters: {}".format(total_parameters))
+	print("=============================================")
 
 csvFileList = []
 csvDataFolder1 = "./MyData"
@@ -263,7 +284,12 @@ discOptimizer = tf.train.AdamOptimizer(
     	beta2=0.999,
 	).minimize(loss, var_list=t_vars)
 
-with tf.Session() as sess:
+count_trainable_parameters()
+
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+
+with tf.Session(config=config) as sess:
 	tf.global_variables_initializer().run()
 	coord = tf.train.Coordinator()
 	threads = tf.train.start_queue_runners(coord=coord)
@@ -293,7 +319,6 @@ with tf.Session() as sess:
 		# 		dev_cross_entropy.append(eval_loss_v)
 		# 	plot.plot('dev accuracy', np.mean(dev_accuracy))
 		# 	plot.plot('dev cross entropy', np.mean(dev_cross_entropy))
-
 
 		if (iteration < 5) or (iteration % 50 == 49):
 			plot.flush()
