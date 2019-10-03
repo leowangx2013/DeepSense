@@ -33,6 +33,7 @@ for f in os.listdir(CSV_PATH):
 random.shuffle(data_files)
 
 train_files = data_files[:int(len(data_files)*TRAINING_RATIO)]
+
 test_files = data_files[int(len(data_files)*TRAINING_RATIO):]
 
 writer = tf.python_io.TFRecordWriter(os.path.join(TF_RECORD_PATH, 'train.tfrecord'))
@@ -45,7 +46,8 @@ writer.close()
 
 
 writer = tf.python_io.TFRecordWriter(os.path.join(TF_RECORD_PATH, 'test.tfrecord'))
-for f in train_files:
+
+for f in test_files:
     f_path = os.path.join(CSV_PATH, f)
     example = csv_to_example(f_path)
     writer.write(example.SerializeToString())

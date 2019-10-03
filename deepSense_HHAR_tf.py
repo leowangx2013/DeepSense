@@ -10,6 +10,8 @@ import sys
 
 os.environ["CUDA_VISIBLE_DEVICES"]="-1"
 
+MODE = "TESTING"	
+CHECKPOINT_PATH = "A:\Research\Accelerometer\AccelerometerSpeechRecognition\DeepSense\checkpoints_tf_record\deepsense_model"
 layers = tf.contrib.layers 
 
 # SEPCTURAL_SAMPLES = 10
@@ -43,7 +45,7 @@ select = 'a'
 metaDict = {'a':[119080, 1193], 'b':[116870, 1413], 'c':[116020, 1477]}
 TRAIN_SIZE = metaDict[select][0]
 EVAL_DATA_SIZE = metaDict[select][1]
-EVAL_ITER_NUM = np.ceil(2004*0.2/64)
+EVAL_ITER_NUM = int(2004*0.2/64)
 TF_RECORD_PATH = "A:\Research\Accelerometer\DeepSense_TensorRecord\DeepSense\\tensor_records"
 
 ###### Import training data
@@ -308,8 +310,8 @@ predict = tf.argmax(logits, axis=1)
 batchLoss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=batch_label)
 loss = tf.reduce_mean(batchLoss)
 
-# logits_eval = deepSense(batch_eval_feature, False, reuse=True, name='deepSense')
-# predict_eval = tf.argmax(logits_eval, axis=1)
+logits_eval = deepSense(batch_eval_feature, False, reuse=True, name='deepSense')
+predict_eval = tf.argmax(logits_eval, axis=1)
 # loss_eval = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits_eval, labels=batch_eval_label))
 
 t_vars = tf.trainable_variables()
@@ -349,43 +351,65 @@ config.gpu_options.allow_growth = True
 
 saver = tf.train.Saver()
 
-with tf.Session(config=config) as sess:
-	tf.global_variables_initializer().run()
-	coord = tf.train.Coordinator()
-	threads = tf.train.start_queue_runners(coord=coord)
+if MODE == "TRAINING":
 
-	for iteration in range(TOTAL_ITER_NUM):
+	with tf.Session(config=config) as sess:
+		tf.global_variables_initializer().run()
+		coord = tf.train.Coordinator()
+		threads = tf.train.start_queue_runners(coord=coord)
 
-		# _, lossV, _trainY, _predict = sess.run([optimizer, loss, trainY, predict], feed_dict = {
-		# 	train_status: True
-		# 	})
-		_, lossV, _trainY, _predict = sess.run([optimizer, loss, batch_label, predict])
-		
-		_label = np.argmax(_trainY, axis=1)
-		_accuracy = np.mean(_label == _predict)
-		# plot.plot('train cross entropy', lossV)
-		# plot.plot('train accuracy', _accuracy)
+		for iteration in range(TOTAL_ITER_NUM):
 
-		print("iteration: {}, accuracy = {}, loss = {}".format(iteration, _accuracy, lossV))
+			# _, lossV, _trainY, _predict = sess.run([optimizer, loss, trainY, predict], feed_dict = {
+			# 	train_status: True
+			# 	})
+			_, lossV, _trainY, _predict = sess.run([optimizer, loss, batch_label, predict])
+			
+			_label = np.argmax(_trainY, axis=1)
+			_accuracy = np.mean(_label == _predict)
+			# plot.plot('train cross entropy', lossV)
+			# plot.plot('train accuracy', _accuracy)
+
+			print("iteration: {}, accuracy = {}, loss = {}".format(iteration, _accuracy, lossV))
+			print("prediction = {}".format(_predict))
+			print("ground truth = {}".format(_label))
+
+			# saver.save(sess, 'A:\Research\Accelerometer\AccelerometerSpeechRecognition\DeepSense\checkpoints\deepsense_model')
+			saver.save(sess, CHECKPOINT_PATH)
+
+			if iteration % 5 == 4:
+				dev_accuracy = []
+				dev_cross_entropy = []
+				for eval_idx in range(EVAL_ITER_NUM):
+					# eval_loss_v, _trainY, _predict = sess.run([loss, trainY, predict], feed_dict ={train_status: False})
+					eval_loss_v, _trainY, _predict = sess.run([loss, batch_eval_label, predict_eval])
+					_label = np.argmax(_trainY, axis=1)
+					_accuracy = np.mean(_label == _predict)
+					dev_accuracy.append(_accuracy)
+					dev_cross_entropy.append(eval_loss_v)
+
+				print("iteration: {}, testing accuracy = {}, testing loss = {}".format(
+					iteration, np.mean(dev_accuracy), np.mean(dev_cross_entropy)))
+				print("")
+else:
+	with tf.Session(config=config) as sess:
+		tf.global_variables_initializer().run()
+		coord = tf.train.Coordinator()
+		threads = tf.train.start_queue_runners(coord=coord)
+
+		saver.restore(sess, CHECKPOINT_PATH)
+
+		dev_accuracy = []
+		dev_cross_entropy = []
+		for eval_idx in range(EVAL_ITER_NUM):
+			# eval_loss_v, _trainY, _predict = sess.run([loss, trainY, predict], feed_dict ={train_status: False})
+			eval_loss_v, _trainY, _predict = sess.run([loss, batch_eval_label, predict_eval])
+			_label = np.argmax(_trainY, axis=1)
+			_accuracy = np.mean(_label == _predict)
+			dev_accuracy.append(_accuracy)
+			dev_cross_entropy.append(eval_loss_v)
+
+		print("testing accuracy = {}, testing loss = {}".format(
+			np.mean(dev_accuracy), np.mean(dev_cross_entropy)))
 		print("prediction = {}".format(_predict))
 		print("ground truth = {}".format(_label))
-
-		# saver.save(sess, 'A:\Research\Accelerometer\AccelerometerSpeechRecognition\DeepSense\checkpoints\deepsense_model')
-		saver.save(sess, 'A:\Research\Accelerometer\AccelerometerSpeechRecognition\DeepSense\checkpoints_tf_record\deepsense_model')
-
-		if iteration % 50 == 49:
-			dev_accuracy = []
-			dev_cross_entropy = []
-			for eval_idx in xrange(EVAL_ITER_NUM):
-				# eval_loss_v, _trainY, _predict = sess.run([loss, trainY, predict], feed_dict ={train_status: False})
-				eval_loss_v, _trainY, _predict = sess.run([loss, batch_eval_label, predict_eval])
-				_label = np.argmax(_trainY, axis=1)
-				_accuracy = np.mean(_label == _predict)
-				dev_accuracy.append(_accuracy)
-				dev_cross_entropy.append(eval_loss_v)
-
-			print('iteration: {}, testing accuracy = {}, testing loss = {}'.format(
-				iteration, np.mean(dev_accuracy), np.mean(dev_cross_entropy)))
-
-
-
