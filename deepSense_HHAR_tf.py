@@ -8,6 +8,8 @@ import math
 import os
 import sys
 
+os.environ["CUDA_VISIBLE_DEVICES"]="-1"
+
 layers = tf.contrib.layers 
 
 # SEPCTURAL_SAMPLES = 10
@@ -59,6 +61,7 @@ def read_audio_csv(filename_queue):
 	print("labels.shape: {}".format(np.array(labels).shape))
 	return features, labels
 
+
 def input_pipeline(filenames, batch_size, shuffle_sample=True, num_epochs=None):
 	filename_queue = tf.train.string_input_producer(filenames, shuffle=shuffle_sample)
 	# filename_queue = tf.train.string_input_producer(filenames, num_epochs=TOTAL_ITER_NUM*EVAL_ITER_NUM*10000000, shuffle=shuffle_sample)
@@ -75,6 +78,8 @@ def input_pipeline(filenames, batch_size, shuffle_sample=True, num_epochs=None):
 		example_batch, label_batch = tf.train.batch(
 			[example, label], batch_size=batch_size, num_threads=16)
 	return example_batch, label_batch
+
+def tf_record_pipeline(tf)
 
 ######
 
@@ -276,18 +281,32 @@ loss += 5e-4 * regularizers
 # optimizer = tf.train.RMSPropOptimizer(0.001)
 # gvs = optimizer.compute_gradients(loss, var_list=t_vars)
 # capped_gvs = [(tf.clip_by_norm(grad, 1.0), var) for grad, var in gvs]
-# discOptimizer = optimizer.apply_gradients(capped_gvs, global_step=global_step)
+# optimizer = optimizer.apply_gradients(capped_gvs, global_step=global_step)
 
-discOptimizer = tf.train.AdamOptimizer(
+optimizer = tf.train.AdamOptimizer(
 		learning_rate=1e-4, 
 	 	beta1=0.9,
     	beta2=0.999,
 	).minimize(loss, var_list=t_vars)
 
+# batch = tf.Variable(0, dtype=data_type())
+
+# learning_rate = tf.train.exponential_decay(
+# 	0.01,                # Base learning rate.
+# 	batch * BATCH_SIZE,  # Current index into the dataset.
+# 	100,          	     # Decay step.
+# 	0.95,                # Decay rate.
+# 	staircase=True)
+
+# optimizer = tf.train.MomentumOptimizer(learning_rate,
+#         0.9).minimize(loss, global_step=batch)
+
 count_trainable_parameters()
 
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
+
+saver = tf.train.Saver()
 
 with tf.Session(config=config) as sess:
 	tf.global_variables_initializer().run()
@@ -296,17 +315,23 @@ with tf.Session(config=config) as sess:
 
 	for iteration in range(TOTAL_ITER_NUM):
 
-		# _, lossV, _trainY, _predict = sess.run([discOptimizer, loss, trainY, predict], feed_dict = {
+		# _, lossV, _trainY, _predict = sess.run([optimizer, loss, trainY, predict], feed_dict = {
 		# 	train_status: True
 		# 	})
-		_, lossV, _trainY, _predict = sess.run([discOptimizer, loss, batch_label, predict])
+		_, lossV, _trainY, _predict = sess.run([optimizer, loss, batch_label, predict])
+		
 		_label = np.argmax(_trainY, axis=1)
 		_accuracy = np.mean(_label == _predict)
 		# plot.plot('train cross entropy', lossV)
 		# plot.plot('train accuracy', _accuracy)
+
 		print("iteration: {}, accuracy = {}, loss = {}".format(iteration, _accuracy, lossV))
 		print("prediction = {}".format(_predict))
 		print("ground truth = {}".format(_label))
+
+		# saver.save(sess, 'A:\Research\Accelerometer\AccelerometerSpeechRecognition\DeepSense\checkpoints\deepsense_model')
+		saver.save(sess, 'A:\Research\Accelerometer\AccelerometerSpeechRecognition\DeepSense\checkpoints_momentum\deepsense_model')
+
 		# if iteration % 50 == 49:
 		# 	dev_accuracy = []
 		# 	dev_cross_entropy = []
@@ -320,10 +345,10 @@ with tf.Session(config=config) as sess:
 		# 	plot.plot('dev accuracy', np.mean(dev_accuracy))
 		# 	plot.plot('dev cross entropy', np.mean(dev_cross_entropy))
 
-		if (iteration < 5) or (iteration % 50 == 49):
-			plot.flush()
+		# if (iteration < 5) or (iteration % 50 == 49):
+		# 	plot.flush()
 
-		plot.tick()
+		# plot.tick()
 
 
 
