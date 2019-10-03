@@ -43,7 +43,8 @@ select = 'a'
 metaDict = {'a':[119080, 1193], 'b':[116870, 1413], 'c':[116020, 1477]}
 TRAIN_SIZE = metaDict[select][0]
 EVAL_DATA_SIZE = metaDict[select][1]
-EVAL_ITER_NUM = int(math.ceil(EVAL_DATA_SIZE / BATCH_SIZE))
+EVAL_ITER_NUM = np.ceil(2004*0.2/64)
+TF_RECORD_PATH = "A:\Research\Accelerometer\DeepSense_TensorRecord\DeepSense\\tensor_records"
 
 ###### Import training data
 def read_audio_csv(filename_queue):
@@ -61,13 +62,47 @@ def read_audio_csv(filename_queue):
 	print("labels.shape: {}".format(np.array(labels).shape))
 	return features, labels
 
+def read_tf_record(tfrec_path):
+	print("tfrec_path: {}".format(tfrec_path))
+	filename_queue = tf.train.string_input_producer([tfrec_path])
+	reader = tf.TFRecordReader()
+	_, serialized_example = reader.read(filename_queue)
+	example = tf.parse_single_example(serialized_example,
+									   features={
+										   'label': tf.FixedLenFeature([OUT_DIM], tf.float32),
+										   'example': tf.FixedLenFeature([WIDE*FEATURE_DIM], tf.float32),
+									   })
+	features = tf.reshape(example['example'], shape=[WIDE, FEATURE_DIM])
+	label = example['label']
+	return features, label
+
+def input_pipeline_tf_record(tfrec_path, batch_size, shuffle_sample=True, num_epochs=None):
+	example, label = read_tf_record(tfrec_path)
+
+	print("example.shape: {}".format(example.get_shape().as_list()))
+	print("label.shape: {}".format(label.get_shape().as_list()))
+
+	min_after_dequeue = 1000  # int(0.4*len(csvFileList)) #1000
+	capacity = min_after_dequeue + 3 * batch_size
+	if shuffle_sample:
+		example_batch, label_batch = tf.train.shuffle_batch(
+			[example, label], batch_size=batch_size, num_threads=16, capacity=capacity,
+			min_after_dequeue=min_after_dequeue)
+	else:
+		example_batch, label_batch = tf.train.batch(
+			[example, label], batch_size=batch_size, num_threads=16)
+	print("example_batch.shape: {}, label_batch.shape: {}".format(
+		example_batch.get_shape().as_list(), label_batch.get_shape().as_list()))
+	return example_batch, label_batch
+
 
 def input_pipeline(filenames, batch_size, shuffle_sample=True, num_epochs=None):
 	filename_queue = tf.train.string_input_producer(filenames, shuffle=shuffle_sample)
 	# filename_queue = tf.train.string_input_producer(filenames, num_epochs=TOTAL_ITER_NUM*EVAL_ITER_NUM*10000000, shuffle=shuffle_sample)
 	example, label = read_audio_csv(filename_queue)
 	print("example.shape: {}".format(example.get_shape().as_list()))
-	print("label.shape: {}".format(example.get_shape().as_list()))
+	print("label.shape: {}".format(np.array(label).shape))
+	
 	min_after_dequeue = 1000 #int(0.4*len(csvFileList)) #1000
 	capacity = min_after_dequeue + 3 * batch_size
 	if shuffle_sample:
@@ -77,9 +112,11 @@ def input_pipeline(filenames, batch_size, shuffle_sample=True, num_epochs=None):
 	else:
 		example_batch, label_batch = tf.train.batch(
 			[example, label], batch_size=batch_size, num_threads=16)
-	return example_batch, label_batch
 
-def tf_record_pipeline(tf)
+	print("example_batch.shape: {}, label_batch.shape: {}".format(
+		example_batch.get_shape().as_list(), label_batch.get_shape().as_list()))
+
+	return example_batch, label_batch
 
 ######
 
@@ -223,16 +260,16 @@ def deepSense(inputs, train, reuse=False, name='deepSense'):
 def count_trainable_parameters():
 	total_parameters = 0
 	for variable in tf.trainable_variables():
-	    # shape is an array of tf.Dimension
-	    shape = variable.get_shape()
-	    # print(shape)
-	    # print(len(shape))
-	    variable_parameters = 1
-	    for dim in shape:
-	        # print(dim)
-	        variable_parameters *= dim.value
-	    # print(variable_parameters)
-	    total_parameters += variable_parameters
+		# shape is an array of tf.Dimension
+		shape = variable.get_shape()
+		# print(shape)
+		# print(len(shape))
+		variable_parameters = 1
+		for dim in shape:
+			# print(dim)
+			variable_parameters *= dim.value
+		# print(variable_parameters)
+		total_parameters += variable_parameters
 	print("=============================================")
 	print("total_parameters: {}".format(total_parameters))
 	print("=============================================")
@@ -251,14 +288,18 @@ for csvFile in orgCsvFileList:
 # 	if csvFile.endswith('.csv'):
 # 		csvEvalFileList.append(os.path.join(csvDataFolder2, csvFile))
 
-global_step = tf.Variable(0, trainable=False)
 
-batch_feature, batch_label = input_pipeline(csvFileList, BATCH_SIZE)
+# batch_feature, batch_label = input_pipeline(csvFileList, BATCH_SIZE)
+
 # batch_eval_feature, batch_eval_label = input_pipeline(csvEvalFileList, BATCH_SIZE, shuffle_sample=False)
+batch_feature, batch_label = input_pipeline_tf_record(os.path.join(TF_RECORD_PATH, 'train.tfrecord'), BATCH_SIZE)
+batch_eval_feature, batch_eval_label = input_pipeline_tf_record(os.path.join(TF_RECORD_PATH, 'test.tfrecord'), BATCH_SIZE, shuffle_sample=False)
 
 # train_status = tf.placeholder(tf.bool)
 # trainX = tf.cond(train_status, lambda: tf.identity(batch_feature), lambda: tf.identity(batch_eval_feature))
 # trainY = tf.cond(train_status, lambda: tf.identity(batch_label), lambda: tf.identity(batch_eval_label))
+
+global_step = tf.Variable(0, trainable=False)
 
 # logits = deepSense(trainX, train_status, name='deepSense')
 logits = deepSense(batch_feature, True, name='deepSense')
@@ -285,8 +326,8 @@ loss += 5e-4 * regularizers
 
 optimizer = tf.train.AdamOptimizer(
 		learning_rate=1e-4, 
-	 	beta1=0.9,
-    	beta2=0.999,
+		beta1=0.9,
+		beta2=0.999,
 	).minimize(loss, var_list=t_vars)
 
 # batch = tf.Variable(0, dtype=data_type())
@@ -330,25 +371,21 @@ with tf.Session(config=config) as sess:
 		print("ground truth = {}".format(_label))
 
 		# saver.save(sess, 'A:\Research\Accelerometer\AccelerometerSpeechRecognition\DeepSense\checkpoints\deepsense_model')
-		saver.save(sess, 'A:\Research\Accelerometer\AccelerometerSpeechRecognition\DeepSense\checkpoints_momentum\deepsense_model')
+		saver.save(sess, 'A:\Research\Accelerometer\AccelerometerSpeechRecognition\DeepSense\checkpoints_tf_record\deepsense_model')
 
-		# if iteration % 50 == 49:
-		# 	dev_accuracy = []
-		# 	dev_cross_entropy = []
-		# 	for eval_idx in xrange(EVAL_ITER_NUM):
-		# 		# eval_loss_v, _trainY, _predict = sess.run([loss, trainY, predict], feed_dict ={train_status: False})
-		# 		eval_loss_v, _trainY, _predict = sess.run([loss, batch_eval_label, predict_eval])
-		# 		_label = np.argmax(_trainY, axis=1)
-		# 		_accuracy = np.mean(_label == _predict)
-		# 		dev_accuracy.append(_accuracy)
-		# 		dev_cross_entropy.append(eval_loss_v)
-		# 	plot.plot('dev accuracy', np.mean(dev_accuracy))
-		# 	plot.plot('dev cross entropy', np.mean(dev_cross_entropy))
+		if iteration % 50 == 49:
+			dev_accuracy = []
+			dev_cross_entropy = []
+			for eval_idx in xrange(EVAL_ITER_NUM):
+				# eval_loss_v, _trainY, _predict = sess.run([loss, trainY, predict], feed_dict ={train_status: False})
+				eval_loss_v, _trainY, _predict = sess.run([loss, batch_eval_label, predict_eval])
+				_label = np.argmax(_trainY, axis=1)
+				_accuracy = np.mean(_label == _predict)
+				dev_accuracy.append(_accuracy)
+				dev_cross_entropy.append(eval_loss_v)
 
-		# if (iteration < 5) or (iteration % 50 == 49):
-		# 	plot.flush()
-
-		# plot.tick()
+			print('iteration: {}, testing accuracy = {}, testing loss = {}'.format(
+				iteration, np.mean(dev_accuracy), np.mean(dev_cross_entropy)))
 
 
 
